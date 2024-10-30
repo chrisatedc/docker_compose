@@ -1,0 +1,106 @@
+version: '3'
+
+services:
+  mongodb:
+    image: mongo:6.0.7
+    container_name: mongo
+    networks:
+      - graylog
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    networks:
+      - graylog
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  graylog:
+    image: graylog/graylog:6.1.1
+    container_name: graylog
+    environment:
+      - GRAYLOG_PASSWORD_SECRET=!@#WHEREISgraylog456
+      - GRAYLOG_ROOT_PASSWORD_SHA2=ba068f189d3efc3e5739321095a845d086b04921ac818c7ea800160c41ab9325
+      - GRAYLOG_HTTP_EXTERNAL_URI=http://127.0.0.1:9000/
+      - GRAYLOG_MONGODB_URI=mongodb://mongo:27017/graylog
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - graylog
+    depends_on:
+      - mongodb
+      - elasticsearch
+    ports:
+      - "9000:9000"
+      - "12201:12201/udp"
+      - "1514:1514/tcp"
+      - "1514:1514/udp"
+    volumes:
+      - graylog_journal:/usr/share/graylog/data/journal
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1.5G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/api/system/cluster/nodes || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  graylog:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: graylog_bridge
+
+volumes:
+  mongo_data:
+    driver: local
+  es_data:
+    driver: local
+  graylog_journal:
+    driver: local
